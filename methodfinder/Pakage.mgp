@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PackageAnalysis>
+    <Package name="methodfinder" x="539" y="61">
+        <DependencyLink destination="methodfinder.Common"/>
+        <DependencyLink destination="methodfinder.Features"/>
+        <DependencyLink destination="methodfinder.Visitors"/>
+    </Package>
+    <Package name="methodfinder.Common" x="876" y="500">
+        <DependencyLink destination="methodfinder.Features">
+            <Point x="595" y="609"/>
+        </DependencyLink>
+    </Package>
+    <Package name="methodfinder.Features" x="167" y="500">
+        <DependencyLink destination="methodfinder.Common">
+            <Point x="596" y="433"/>
+        </DependencyLink>
+    </Package>
+    <Package name="methodfinder.Visitors" x="518" y="314">
+        <DependencyLink destination="methodfinder.Common"/>
+        <DependencyLink destination="methodfinder.Features"/>
+    </Package>
+</PackageAnalysis>

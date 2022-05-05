@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "Launch App",
+            "request": "launch",
+            "mainClass": "methodfinder.App",
+            "projectName": "methodfinder",
+            "args": [
+                "--csvFile",
+                "/home/qyh/code2seq_pytorch/benchmark/FlakeFlagger_benchmark_plus.csv",
+                "--projectsDir",
+                "/disk2/FlakyDetect_qyh/projects",
+                "--output_dir",
+                "/home/qyh/code2seq_pytorch/raw_method_files"
+            ]
+        }
+    ]
+}

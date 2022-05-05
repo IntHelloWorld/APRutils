@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClassDiagram>
+    <CommunicationClass
+        name="methodfinder.Visitors.MethodDeclarationVisitor" x="888" y="92"/>
+    <CommunicationClass name="methodfinder.FeatureExtractTask" x="637" y="63">
+        <Association
+            destinationClassName="methodfinder.Common.CommandLineValues"
+            endpointName="m_CommandLineValues" kind="Simple"/>
+        <Communication destinationClassName="methodfinder.Features.MethodFeatures"/>
+        <Communication destinationClassName="methodfinder.FeatureExtractor"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Visitors.MyTreeVisitor"
+        x="1176" y="265">
+        <Association
+            destinationClassName="methodfinder.Features.ProgramRelation"
+            endpointName="relations" kind="Simple"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.App" x="679" y="-39">
+        <Association
+            destinationClassName="methodfinder.Common.CommandLineValues"
+            endpointName="s_CommandLineValues" kind="Simple"/>
+        <Communication destinationClassName="methodfinder.FeatureExtractTask"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Visitors.ImportExprVisitor"
+        x="914" y="179"/>
+    <CommunicationClass name="methodfinder.Visitors.FunctionVisitor"
+        x="924" y="265">
+        <Association
+            destinationClassName="methodfinder.Common.MethodContent"
+            endpointName="m_Methods" kind="Simple"/>
+        <Communication destinationClassName="methodfinder.Common.Common"/>
+        <Communication destinationClassName="methodfinder.Visitors.MyTreeVisitor"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Features.MethodPath" x="220" y="485">
+        <Communication destinationClassName="methodfinder.Features.Element"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Features.Element" x="92" y="485"/>
+    <CommunicationClass name="methodfinder.Common.MethodContent" x="647" y="565">
+        <Association
+            destinationClassName="methodfinder.Features.ProgramRelation"
+            endpointName="relations" kind="Simple"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Common.Common" x="940" y="488"/>
+    <CommunicationClass name="methodfinder.Features.ProgramRelation"
+        x="65" y="376">
+        <Association destinationClassName="methodfinder.Features.Edge"
+            endpointName="edge" kind="Simple"/>
+        <Association
+            destinationClassName="methodfinder.Features.Element"
+            endpointName="source" kind="Simple"/>
+        <Association
+            destinationClassName="methodfinder.Features.Element"
+            endpointName="target" kind="Simple"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Features.MethodFeatures"
+        x="203" y="225">
+        <Association
+            destinationClassName="methodfinder.Features.MethodPath"
+            endpointName="paths" kind="Simple"/>
+        <Communication destinationClassName="methodfinder.Features.Edge"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Features.Edge" x="236" y="374">
+        <Extension destinationClassName="methodfinder.Features.Element"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.FeatureExtractor" x="644" y="373">
+        <Association
+            destinationClassName="methodfinder.Common.CommandLineValues"
+            endpointName="m_CommandLineValues" kind="Simple"/>
+        <Communication destinationClassName="methodfinder.Common.MethodContent"/>
+        <Communication destinationClassName="methodfinder.Common.Common"/>
+        <Communication destinationClassName="methodfinder.Visitors.MethodDeclarationVisitor"/>
+        <Communication destinationClassName="methodfinder.Features.MethodFeatures"/>
+        <Communication destinationClassName="methodfinder.Features.Edge"/>
+        <Communication destinationClassName="methodfinder.Visitors.ImportExprVisitor"/>
+        <Communication destinationClassName="methodfinder.Visitors.FunctionVisitor"/>
+        <Communication destinationClassName="methodfinder.Features.MethodPath"/>
+    </CommunicationClass>
+    <CommunicationClass name="methodfinder.Common.CommandLineValues"
+        x="809" y="565"/>
+    <CommunicationClass name="methodfinder.Features.programFeatures"
+        x="64" y="302">
+        <Association
+            destinationClassName="methodfinder.Features.MethodFeatures"
+            endpointName="programPaths" kind="Simple"/>
+    </CommunicationClass>
+    <Note x="731" y="-39">Entrance Class</Note>
+</ClassDiagram>
