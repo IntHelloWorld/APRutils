@@ -31,8 +31,13 @@ class PyAstParser:
         assert path.is_file()
         with path.open(encoding="utf-8") as f:
             text = f.read()
-            tokens = javalang.tokenizer.tokenize(text)
-            ast = javalang.parser.parse(tokens)
+            try:
+                tokens = javalang.tokenizer.tokenize(text)
+                ast = javalang.parser.parse(tokens)
+            except Exception:
+                text = "public class TempClass {" + text + "}"
+                tokens = javalang.tokenizer.tokenize(text)
+                ast = javalang.parser.parse(tokens)
         return ast
 
     def dir2asts(self, dir: str) -> Dict[str, CompilationUnit]:
@@ -102,7 +107,9 @@ class PyAstParser:
 
         return list(expand(children))
 
-    def asts2token_vocab(self, asts: Dict[str, CompilationUnit], print_statastic: bool = False) -> Dict[str, int]:
+    def asts2token_vocab(
+        self, asts: Dict[str, CompilationUnit], print_statastic: bool = False
+    ) -> Dict[str, int]:
         """Transform asts dict to a ast token vocabulary.
 
         Args:
@@ -249,9 +256,17 @@ class PyAstParser:
 
         def gen_next_sib_edge(node, graph):
             for i in range(len(node.children) - 1):
-                graph.add_edge(node.children[i].id, node.children[i + 1].id, type=edges_type_idx["NextSib"])
+                graph.add_edge(
+                    node.children[i].id,
+                    node.children[i + 1].id,
+                    type=edges_type_idx["NextSib"],
+                )
                 if bidirectional_edge:
-                    graph.add_edge(node.children[i + 1].id, node.children[i].id, type=edges_type_idx["Prevsib"])
+                    graph.add_edge(
+                        node.children[i + 1].id,
+                        node.children[i].id,
+                        type=edges_type_idx["Prevsib"],
+                    )
             for child in node.children:
                 gen_next_sib_edge(child, graph)
 
@@ -259,9 +274,17 @@ class PyAstParser:
             token = node.token
             if token == "BlockStatement":
                 for i in range(len(node.children) - 1):
-                    graph.add_edge(node.children[i].id, node.children[i + 1].id, type=edges_type_idx["Nextstmt"])
+                    graph.add_edge(
+                        node.children[i].id,
+                        node.children[i + 1].id,
+                        type=edges_type_idx["Nextstmt"],
+                    )
                     if bidirectional_edge:
-                        graph.add_edge(node.children[i + 1].id, node.children[i].id, type=edges_type_idx["Prevstmt"])
+                        graph.add_edge(
+                            node.children[i + 1].id,
+                            node.children[i].id,
+                            type=edges_type_idx["Prevstmt"],
+                        )
             for child in node.children:
                 gen_next_stmt_edge(child, graph)
 
@@ -275,9 +298,15 @@ class PyAstParser:
             token_list = []
             get_token_list(node, token_list)
             for i in range(len(token_list) - 1):
-                graph.add_edge(token_list[i], token_list[i + 1], type=edges_type_idx["Nexttoken"])
+                graph.add_edge(
+                    token_list[i], token_list[i + 1], type=edges_type_idx["Nexttoken"]
+                )
                 if bidirectional_edge:
-                    graph.add_edge(token_list[i + 1], token_list[i], type=edges_type_idx["Prevtoken"])
+                    graph.add_edge(
+                        token_list[i + 1],
+                        token_list[i],
+                        type=edges_type_idx["Prevtoken"],
+                    )
 
         def gen_next_use_edge(node, graph):
             def get_vars(node, var_dict):
@@ -298,29 +327,69 @@ class PyAstParser:
             get_vars(node, var_dict)
             for v in var_dict:
                 for i in range(len(var_dict[v]) - 1):
-                    graph.add_edge(var_dict[v][i], var_dict[v][i + 1], type=edges_type_idx["Nextuse"])
+                    graph.add_edge(
+                        var_dict[v][i],
+                        var_dict[v][i + 1],
+                        type=edges_type_idx["Nextuse"],
+                    )
                     if bidirectional_edge:
-                        graph.add_edge(var_dict[v][i + 1], var_dict[v][i], type=edges_type_idx["Prevuse"])
+                        graph.add_edge(
+                            var_dict[v][i + 1],
+                            var_dict[v][i],
+                            type=edges_type_idx["Prevuse"],
+                        )
 
         def gen_control_flow_edge(node, graph):
             token = node.token
             if while_edge:
                 if token == "WhileStatement":
-                    graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["While"])
-                    graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["While"])
+                    graph.add_edge(
+                        node.children[0].id,
+                        node.children[1].id,
+                        type=edges_type_idx["While"],
+                    )
+                    graph.add_edge(
+                        node.children[1].id,
+                        node.children[0].id,
+                        type=edges_type_idx["While"],
+                    )
             if for_edge:
                 if token == "ForStatement":
-                    graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["For"])
-                    graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["For"])
+                    graph.add_edge(
+                        node.children[0].id,
+                        node.children[1].id,
+                        type=edges_type_idx["For"],
+                    )
+                    graph.add_edge(
+                        node.children[1].id,
+                        node.children[0].id,
+                        type=edges_type_idx["For"],
+                    )
             if if_edge:
                 if token == "IfStatement":
-                    graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["If"])
+                    graph.add_edge(
+                        node.children[0].id,
+                        node.children[1].id,
+                        type=edges_type_idx["If"],
+                    )
                     if bidirectional_edge:
-                        graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["If"])
+                        graph.add_edge(
+                            node.children[1].id,
+                            node.children[0].id,
+                            type=edges_type_idx["If"],
+                        )
                     if len(node.children) == 3:
-                        graph.add_edge(node.children[0].id, node.children[2].id, type=edges_type_idx["Ifelse"])
+                        graph.add_edge(
+                            node.children[0].id,
+                            node.children[2].id,
+                            type=edges_type_idx["Ifelse"],
+                        )
                         if bidirectional_edge:
-                            graph.add_edge(node.children[2].id, node.children[0].id, type=edges_type_idx["Ifelse"])
+                            graph.add_edge(
+                                node.children[2].id,
+                                node.children[0].id,
+                                type=edges_type_idx["Ifelse"],
+                            )
             for child in node.children:
                 gen_control_flow_edge(child, graph)
 
