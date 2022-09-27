@@ -4,7 +4,6 @@ from pathlib import Path
 from pprint import pprint
 from typing import Dict, List, Tuple
 
-import dgl
 from tqdm import tqdm
 from tree_sitter import Language, Node, Parser, Tree
 
