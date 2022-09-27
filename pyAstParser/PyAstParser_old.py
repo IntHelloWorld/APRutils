@@ -2,10 +2,10 @@ import os
 import re
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
-import dgl
-from tqdm import tqdm
+from anytree import AnyNode, RenderTree
+from networkx import DiGraph
 from tree_sitter import Language, Node, Parser, Tree
 
 
@@ -36,18 +36,21 @@ class PyAstParser:
         assert path.is_file()
         with path.open(encoding="utf-8") as f:
             text = f.read()
-            ast = self.parser.parse(bytes(text, "utf-8"))
-            if ast.root_node.has_error:
-                print("try with wrapped temp class")
-                text = "public class TempClass {" + text + "}"
+            try:
                 ast = self.parser.parse(bytes(text, "utf-8"))
-                if ast.root_node.has_error:
-                    print(f"    parsing error, return None")
-                    print(f"        {str(path)}")
+            except Exception as e:
+                print(e)
+                print("parsing error, try with wrapped temp class")
+                text = "public class TempClass {" + text + "}"
+                try:
+                    ast = self.parser.parse(bytes(text, "utf-8"))
+                except Exception as e2:
+                    print(e2)
+                    print("parsing error, return None")
                     return None
         return ast
 
-    def dir2asts(self, dir: str, tranverse: bool = False) -> Dict[str, Dict[str, Tree]]:
+    def dir2asts(self, dir: str, tranverse: bool = False) -> Dict[str, Tree]:
         """Parse all files in the dir to asts dict.
 
         Args:
@@ -55,7 +58,7 @@ class PyAstParser:
             tranverse (bool): if tranverse all the files in dir.
 
         Return:
-            asts (Dict[str, Dict[str, Tree]]): asts with form Dict[dir_name, Dict[file_name, Tree]].
+            asts (Dict[str, Tree]): dict where keys are file paths, values are asts.
         """
         asts = dict()
 
@@ -64,61 +67,19 @@ class PyAstParser:
                 if sub_path.is_file():
                     yield sub_path
                 else:
-                    for sub_sub_path in all_path(sub_path):
-                        yield sub_sub_path
+                    all_path(sub_path)
             return "done"
 
         if tranverse:
-            for path in tqdm(all_path(Path(dir)), desc="itering dirs and parsing files..."):
-                ast = self.file2ast(str(path))
-                file_name = str(path.name)
-                dir_name = str(path.parent)
-                try:
-                    asts[dir_name][file_name] = ast
-                except Exception:
-                    asts[dir_name] = {file_name: ast}
+            for path in all_path(Path(dir)):
+                ast = self.file2ast(path)
+                asts[str(path)] = ast
         else:
-            for path in tqdm(Path(dir).iterdir(), desc="parsing files..."):
+            for path in Path(dir).iterdir():
                 if path.is_file():
-                    ast = self.file2ast(str(path))
-                    file_name = str(path.name)
-                    dir_name = str(path.parent)
-                    try:
-                        asts[dir_name][file_name] = ast
-                    except Exception:
-                        asts[dir_name] = {file_name: ast}
+                    ast = self.file2ast(path)
+                    asts[str(path)] = ast
         return asts
-
-    @staticmethod
-    def asts2sequences(asts: Dict[str, Dict[str, Tree]], lower: bool = False) -> Dict[str, List[str]]:
-        """Turning parsed asts to token sequences, also known as 'flatterd, can be used for training woed2vec.
-
-        Args:
-            asts (Dict[str, Dict[str, Tree]]): Parsed asts.
-            lower (bool, optional): If lower the tokens. Defaults to False.
-
-        Returns:
-            Dict[str, List[str]]: Sequences with form Dict[file_path, List[tokens]].
-        """
-
-        def get_sequence(node, sequence):
-            token, children = PyAstParser.get_token(node, lower=lower), node.children
-            if token != "":
-                sequence.append(token)
-            for child in children:
-                if "comment" in child.type:
-                    continue
-                get_sequence(child, sequence)
-
-        sequences = {}
-        for dir_name in tqdm(asts, desc="asts to sequences"):
-            for fname, ast in asts[dir_name].items():
-                seq = []
-                get_sequence(ast.root_node, seq)
-                fpath = os.path.join(dir_name, fname)
-                sequences[fpath] = seq
-
-        return sequences
 
     @staticmethod
     def get_token(node: Node, lower: bool = False) -> str:
@@ -137,11 +98,8 @@ class PyAstParser:
         if not node.is_named:
             token = ""
         else:
-            if len(node.children) == 0:  # leaf node
-                if node.type == "string_literal":
-                    token = "string_literal"
-                else:
-                    token = re.sub(r"\s", "", str(node.text, "utf-8"))
+            if len(node.children) == 0:
+                token = re.sub(r"\s", "", str(node.text, "utf-8"))
             else:
                 token = node.type
         if lower:
@@ -149,104 +107,23 @@ class PyAstParser:
         return token
 
     @staticmethod
-    def get_child_with_type(node: Node, type: str, vague=False) -> Tuple[Node, int]:
-        """Get the child and its index in all of the children with given type. Notice that the comment children are ignored.
-
-        Args:
-            node (tree_sitter.Node): Ast node.
-            type (str): Expect type name. The pattern if vague is True.
-            vague (bool): If vague mode. Default to False.
-
-        Returns:
-            child (tree_sitter.Node): Child of the node with given type. Return None if did not find.
-            id (int): Child index. Return None if did not find.
-        """
-        id = 0
-        if vague:
-            for child in node.children:
-                if "comment" in child.type:
-                    continue
-                else:
-                    if re.search(type, child.type) is not None:
-                        return child, id
-                    id += 1
-        else:
-            for child in node.children:
-                if "comment" in child.type:
-                    continue
-                else:
-                    if child.type == type:
-                        return child, id
-                    id += 1
-        return None, None
-
-    @staticmethod
-    def get_named_children(node: Node) -> List[Node]:
-        """Get all named children of a ast node. Notice that the comment children are ignored.
+    def get_child(node: Node) -> List[Node]:
+        """Get all children of a ast node.
 
         Args:
             node (tree_sitter.Node): Ast node.
 
         Returns:
-            children (List[tree_sitter.Node]): Named children list of the input node.
+            children (List[Node]): Children list of the input node.
         """
-        named_children = []
-        for child in node.children:
-            if child.is_named and "comment" not in child.type:
-                named_children.append(child)
-        return named_children
+        return node.children
 
     @staticmethod
-    def distinguish_for(node: Node) -> str:
-        """
-        As for_statement has different types base on the presence of init, condition and update statements, this function distinguish the type of a for_statement.
+    def asts2token_vocab(asts: Dict[str, Tree], statastic: bool = False) -> Dict[str, int]:
+        """Transform asts dict to a ast token vocabulary.
 
         Args:
-            node (tree_sitter.Node): input node, must be for_statement.
-
-        Returns:
-            type (str): type of the for_statement node, one of {"","i","ic","iu","cu","icu"}, i, c, u are abbrevations of init, condition and update respectively.
-        """
-        assert node.type == "for_statement"
-        res = ""
-        for child in node.children:
-            if child.type == "(":
-                if child.next_sibling.type != ";":
-                    res += "i"
-                if child.next_sibling.next_sibling.type != ";":
-                    res += "c"
-            elif child.type == ")":
-                if child.prev_sibling.type != ";":
-                    res += "u"
-        return res
-
-    @staticmethod
-    def distinguish_if(node: Node) -> str:
-        """
-        As if_statement has different types base on the presence of 'else if' and 'else', this function distinguish the type of a if_statement.
-
-        Args:
-            node (tree_sitter.Node): input node, must be if_statement.
-
-        Returns:
-            type (str): type of the for_statement node, one of {"if","if_elif","if_else"}.
-        """
-        assert node.type == "if_statement"
-        for child in node.children:
-            if child.type == "else":
-                if child.next_sibling.type == "if_statement":
-                    return "if_elif"
-                else:
-                    return "if_else"
-        return "if"
-
-    @staticmethod
-    def asts2token_vocab(asts: Dict[str, Dict[str, Tree]], lower: bool = False, statastic: bool = False) -> Dict[str, int]:
-        """Transform asts dict to a ast token vocabulary, ignore comments.
-
-        Args:
-            asts (Dict[str, Dict[str, Tree]]): dict with form Dict[dir_name, Dict[file_name, Tree]].
-            lower (bool): If token lower.
+            asts (Dict[str, Tree]): dict where key is the file path, value is the ast.
             statastic (bool): If print the statastic information. Defaults to False.
 
         Return:
@@ -254,8 +131,7 @@ class PyAstParser:
         """
 
         def get_sequence(node, sequence):
-            token = PyAstParser.get_token(node, lower=lower)
-            children = PyAstParser.get_named_children(node)
+            token, children = PyAstParser.get_token(node), PyAstParser.get_child(node)
             if token != "":
                 sequence.append(token)
             for child in children:
@@ -271,9 +147,8 @@ class PyAstParser:
             return count
 
         all_tokens = []
-        for dir_name in tqdm(asts, desc="Get token sequence"):
-            for file_name, ast in asts[dir_name].items():
-                get_sequence(ast.root_node, all_tokens)
+        for ast in asts.values():
+            get_sequence(ast.root_node, all_tokens)
 
         # Token statastic
         if statastic:
@@ -288,87 +163,37 @@ class PyAstParser:
         return token_vocab
 
     @staticmethod
-    def ast2any_tree(tree: Tree, lower: bool = False):
-        """Turn ast to anytree.  Require package 'anytree'.
+    def ast2any_tree(tree: Tree) -> AnyNode:
+        """Turn ast to anytree. Using anytree package.
 
         Args:
             tree (tree_sitter.Tree): The root node of the giving ast tree.
-            lower (bool): If token lower. Default to False.
 
         Returns:
             newtree (AnyNode): The root node of the generated anytree.
         """
-        from anytree import AnyNode
 
-        global id
-        id = 0
-
-        def create_tree(node, parent):
-            children = PyAstParser.get_named_children(node)
-            token = PyAstParser.get_token(node, lower=lower)
-            global id
-            if id > 0:
-                newnode = AnyNode(id=id, token=token, data=node, parent=parent)
-            else:
-                newnode = parent
+        def create_tree(node, id, parent):
+            children = PyAstParser.get_child(node)
+            token = PyAstParser.get_token(node)
             id += 1
+            if id > 1 and token != "":
+                newnode = AnyNode(id=id, token=token, data=node, parent=parent)
             for child in children:
-                # if parent.id == 0:
-                #     create_tree(child, id, parent=parent)
-                # else:
-                create_tree(child, parent=newnode)
+                if id > 1:
+                    create_tree(child, id, parent=newnode)
+                else:
+                    create_tree(child, id, parent=parent)
 
         root_node = tree.root_node
-        new_tree = AnyNode(id=id, token=PyAstParser.get_token(root_node, lower=lower), data=root_node)
-        create_tree(root_node, new_tree)
+        new_tree = AnyNode(id=0, token=PyAstParser.get_token(root_node), data=root_node)
+        id = 0
+        create_tree(root_node, id, new_tree)
         return new_tree
 
     @staticmethod
-    def trees2DGLgraphs(asts: Dict[str, Dict[str, Tree]], token_vocab: Dict[str, int]):
-        """Turn asts to DGLgraphs. Require package 'dgl'.
-
-        Args:
-            asts (Dict[str, Dict[str, Tree]]): The input ast dict with form Dict[dir_name, Dict[file_name, Tree]].
-            token_vocab (Dict[str, int]): The input token dict where key is the token in ast, value is the token id.
-
-        Returns:
-            Dict[str, Dict[str, info_dict]]: The Graph dict with form Dict[dir_name, Dict[file_name, info_dict]],
-                    info_dict is {"n_layers": int, "graph": dgl.DGLgraph, "node_types": List[str]}.
-        """
-        import torch
-        from dgl import add_self_loop, graph
-
-        def gen_basic_graph(u, v, feats, node_types, node, vocab_dict):
-            feat = torch.LongTensor([vocab_dict[node.token]])
-            feats.append(feat)
-            node_types.append(node.data.type)
-            for child in node.children:
-                v.append(node.id)
-                u.append(child.id)
-                gen_basic_graph(u, v, feats, node_types, child, vocab_dict)
-
-        print("Turn ast trees into DGLgraphs...")
-        graphs = {}
-        for dir_name in tqdm(asts, desc="transform trees to DGLgraphs..."):
-            for f_name, ast in asts[dir_name].items():
-                new_tree = PyAstParser.ast2any_tree(ast)
-                n_layers = new_tree.height
-                u, v, feats, node_types = [], [], [], []
-                gen_basic_graph(u, v, feats, node_types, new_tree, token_vocab)
-                g = graph((u, v))
-                g.ndata["token_id"] = torch.stack(feats)
-                g = add_self_loop(g)
-                try:
-                    graphs[dir_name][f_name] = {"n_layers": n_layers, "graph": g, "node_types": node_types}
-                except Exception:
-                    graphs[dir_name] = {f_name: {"n_layers": n_layers, "graph": g, "node_types": node_types}}
-        print("finished!")
-
-        return graphs
-
-    @staticmethod
     def trees2graphs(
-        asts: Dict[str, Dict[str, Tree]],
+        asts: Dict[str, Tree],
         token_vocab: Dict[str, int],
         bidirectional_edge: bool = True,
         ast_only: bool = True,
@@ -394,11 +219,11 @@ class PyAstParser:
             "Prevstmt": 11,
             "Prevsib": 12,
         },
-    ):
-        """Turn asts to graphs. Require package 'nextworkx' and 'anytree'.
+    ) -> Dict[str, DiGraph]:
+        """Turn asts to graphs. Using package 'nextworkx' and 'anytree'.
 
         Args:
-            asts (Dict[str, Dict[str, Tree]]): The input ast dict with form Dict[dir_name, Dict[file_name, Tree]].
+            asts (Dict[str, Tree]): The input ast dict where key is the file path, value is the parsed tree.
             token_vocab (Dict[str, int]): The input token dict where key is the token in ast, value is the token id.
             bidirectional_edge (bool, optional): If add bidirectional edge. Defaults to True.
             ast_only (bool, optional): If only build basic graph bases on origin ast. Defaults to True.
@@ -427,9 +252,8 @@ class PyAstParser:
                 }
 
         Returns:
-            Dict[str, Dict[str, networkx.DiGraph]]: The Graph dict with form Dict[dir_name, Dict[file_name, DiGraph]].
+            graph dict (Dict[str, DiGraph]): The Graph dict where key is the file path, value is the directed graph transform from the ast tree.
         """
-        from networkx import DiGraph
 
         def gen_basic_graph(node, vocab_dict, graph):
             token = node.token
@@ -495,6 +319,32 @@ class PyAstParser:
                         graph.add_edge(var_dict[v][i + 1], var_dict[v][i], type=edges_type_idx["Prevuse"])
 
         def gen_control_flow_edge(node, graph):
+            def distinguish_for(node):
+                """
+                As for_statement has different types base on the presence of init, condition and update statements, this function distinguish the type of a for_statement according to its named children amount and semicolon children amount (under tree_sitter package).
+                """
+                semicolon = 0
+                named_children = 0
+                for c in node.children:
+                    if c.type == ";":
+                        semicolon += 1
+                    if c.is_named:
+                        named_children += 1
+                if named_children == 1:
+                    return "only_block"
+                elif named_children == 2:
+                    if semicolon == 1:
+                        return "init_block"
+                    else:
+                        return "con/up_block"
+                elif named_children == 3:
+                    if semicolon == 1:
+                        return "con_up_block"
+                    else:
+                        return "init_con/up_block"
+                else:
+                    return "init_con_up_block"
+
             token = node.token
             if while_edge:
                 if token == "while_statement":
@@ -502,24 +352,24 @@ class PyAstParser:
                     graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["While"])
             if for_edge:
                 if token == "for_statement":
-                    for_type = PyAstParser.distinguish_for(node.data)
-                    if for_type == "":
+                    for_type = distinguish_for(node.data)
+                    if for_type == "only_block":
                         pass
-                    elif for_type == "i":
+                    elif for_type == "init_block":
                         graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[1].id, node.children[1].id, type=edges_type_idx["For"])
-                    elif for_type in {"c", "u"}:
+                    elif for_type == "con/up_block":
                         graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["For"])
-                    elif for_type == "cu":
+                    elif for_type == "con_up_block":
                         graph.add_edge(node.children[0].id, node.children[2].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[1].id, node.children[0].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[2].id, node.children[1].id, type=edges_type_idx["For"])
-                    elif for_type in {"ic", "iu"}:
+                    elif for_type == "init_con/up_block":
                         graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[1].id, node.children[2].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[2].id, node.children[1].id, type=edges_type_idx["For"])
-                    else:  # "icu"
+                    else:
                         graph.add_edge(node.children[0].id, node.children[1].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[1].id, node.children[3].id, type=edges_type_idx["For"])
                         graph.add_edge(node.children[2].id, node.children[1].id, type=edges_type_idx["For"])
@@ -550,22 +400,32 @@ class PyAstParser:
             )
 
         graph_dict = {}
-        for dir_name in tqdm(asts, desc="transform trees to graphs..."):
-            for f_name, ast in asts[dir_name].items():
-                new_tree = PyAstParser.ast2any_tree(ast)
-                DiG = DiGraph()
-                gen_basic_graph(new_tree, token_vocab, DiG)
-                if next_sib:
-                    gen_next_sib_edge(new_tree, DiG)
-                if block_edge:
-                    gen_next_stmt_edge(new_tree, DiG)
-                if next_token:
-                    gen_next_token_edge(new_tree, DiG)
-                if next_use:
-                    gen_next_use_edge(new_tree, DiG)
-                gen_control_flow_edge(new_tree, DiG)
-                try:
-                    graph_dict[dir_name][f_name] = DiG
-                except Exception:
-                    graph_dict[dir_name] = {f_name: DiG}
+        for fpath, ast in asts.items():
+            new_tree = PyAstParser.ast2any_tree(ast)
+            DiG = DiGraph()
+            gen_basic_graph(new_tree, token_vocab, DiG)
+            if next_sib:
+                gen_next_sib_edge(new_tree, DiG)
+            if block_edge:
+                gen_next_stmt_edge(new_tree, DiG)
+            if next_token:
+                gen_next_token_edge(new_tree, DiG)
+            if next_use:
+                gen_next_use_edge(new_tree, DiG)
+            gen_control_flow_edge(new_tree, DiG)
+            graph_dict[fpath] = DiG
         return graph_dict
+
+
+if __name__ == "__main__":
+    os.chdir(Path(__file__).parent)
+    my_parser = PyAstParser("/home/qyh/Desktop/github/GitHub/MTN-cue/tree-sitter/python-java-c-languages.so", "java")
+    # my_parser = PyAstParser()
+    tree = my_parser.file2ast("./test.java")
+    anytree = my_parser.ast2any_tree(tree)
+    print(RenderTree(anytree))
+    token_vocab = my_parser.asts2token_vocab({"1": tree})
+    graph = my_parser.trees2graphs({"1": tree}, token_vocab)
+    print(graph["1"].nodes)
+    vocab = my_parser.asts2token_vocab({"1": tree})
+    print(1)
